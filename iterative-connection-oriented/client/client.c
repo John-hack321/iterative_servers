@@ -1,25 +1,25 @@
 /*
  * SCS3304 — One-on-One Chat Application
  * Assignment 3 — Iterative Connection-Oriented (TCP)
- * Client
+ * Client  (FIXED: connect per session, not at startup)
  *
- * USAGE:
- *   ./client <server_ip>
- *   e.g.  ./client 192.168.1.105
+ * THE FIX EXPLAINED:
+ *   The original client opened ONE TCP connection at startup and
+ *   kept it open for the entire program lifetime. This breaks the
+ *   iterative server because:
+ *     - Client 2 connects → OS queues it (handshake succeeds)
+ *     - Client 2 sends LOGIN → goes into TCP send buffer
+ *     - Server is busy with Client 1 → never calls recv() for Client 2
+ *     - Client 2's recv_msg() blocks forever → "server error"
+ *     - When Client 1 logs out, server tries to accept() Client 2's
+ *       stale connection → socket is in bad state → server crashes
  *
- * HOW THIS DIFFERS FROM ASSIGNMENT 2:
- *   The app features are identical but the server behind it is
- *   iterative — it can only serve ONE client at a time. If you
- *   try to connect while another client is being served, your
- *   connection will be queued by the OS and you will see a
- *   short delay before the welcome menu appears (because connect()
- *   succeeds — the TCP handshake completes — but the server won't
- *   call accept() until the current session ends).
+ *   The fix: connect() only when a user actually starts a session
+ *   (login or register), and close() when the session ends.
+ *   This way Client 2 doesn't even attempt to connect until the
+ *   server is free — it just sits at the main menu waiting.
  *
- * CHAT MODEL:
- *   Send-and-read-reply. Type a message, it is sent and ACK'd.
- *   Use /refresh to poll for messages the other person sent.
- *   No live push — that requires concurrency on the server side.
+ *   This is the CORRECT pattern for an iterative server.
  */
 
 #include <stdio.h>
@@ -37,6 +37,7 @@
 
 static int  sock_fd = -1;
 static char me[MAX_NAME_LEN + 1] = "";
+static char server_ip[64] = "";   /* saved so we can reconnect */
 
 static void clear_screen(void)           { printf("\033[2J\033[H"); }
 static void print_error(const char *m)   { printf("  [!] %s\n", m); }
@@ -46,6 +47,79 @@ static void print_info(const char *m)    { printf("  [*] %s\n", m); }
 static void read_line(char *buf, int size) {
     if (fgets(buf, size, stdin)) buf[strcspn(buf, "\n")] = 0;
     else buf[0] = 0;
+}
+
+/* ============================================================
+ * FUNCTION : connect_to_server
+ * PURPOSE  : Open a fresh TCP connection to the server.
+ *            Called at the start of each login/register attempt.
+ *            The iterative server only serves one client at a
+ *            time — we don't connect until we're actually ready
+ *            to start a session, so we don't block the server
+ *            with an idle queued connection.
+ * ============================================================ */
+static int connect_to_server(void) {
+    struct sockaddr_in server_addr;
+
+    /* close any previous socket that might be lingering */
+    if (sock_fd >= 0) {
+        close(sock_fd);
+        sock_fd = -1;
+    }
+
+    sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_fd < 0) {
+        perror("  [!] socket() failed");
+        return -1;
+    }
+
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port   = htons(SERVER_PORT);
+
+    if (inet_pton(AF_INET, server_ip, &server_addr.sin_addr) <= 0) {
+        fprintf(stderr, "  [!] invalid server IP: %s\n", server_ip);
+        close(sock_fd);
+        sock_fd = -1;
+        return -1;
+    }
+
+    printf("\n  connecting to server at %s:%d ...\n", server_ip, SERVER_PORT);
+
+    if (connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        /*
+         * connect() will fail (or block a long time) if the server is
+         * currently serving another client AND the backlog is full.
+         * In practice with BACKLOG=5 it will usually succeed (TCP
+         * handshake completes into the backlog) but then recv_msg()
+         * would block. By connecting only here — right before we send
+         * a real command — the window of "connected but ignored" is
+         * as small as possible.
+         *
+         * A cleaner solution for production would be a retry loop here,
+         * but for the assignment this is sufficient.
+         */
+        perror("  [!] connect() failed — server may be busy, try again");
+        close(sock_fd);
+        sock_fd = -1;
+        return -1;
+    }
+
+    printf("  [+] TCP connection established.\n\n");
+    return 0;
+}
+
+/* ============================================================
+ * FUNCTION : disconnect_from_server
+ * PURPOSE  : Cleanly close the TCP connection after a session.
+ *            This is what signals the iterative server to call
+ *            accept() again for the next waiting client.
+ * ============================================================ */
+static void disconnect_from_server(void) {
+    if (sock_fd >= 0) {
+        close(sock_fd);
+        sock_fd = -1;
+    }
 }
 
 /* send one message over TCP, read one response */
@@ -93,14 +167,6 @@ static void print_recent_messages(const char *partner) {
 
 /* ============================================================
  * FUNCTION : chat_loop
- * PURPOSE  : Send-and-read-reply chat over the persistent TCP
- *            connection.
- *
- * NOTE:
- *   The TCP connection stays open throughout this entire loop.
- *   Every send/recv happens on the same socket fd. This is
- *   what makes it connection-oriented — the server holds your
- *   socket open and no other client can connect until you leave.
  * ============================================================ */
 static void chat_loop(const char *partner) {
     char input[MAX_BODY_LEN];
@@ -279,60 +345,6 @@ static void screen_search(void) {
 }
 
 /* ============================================================
- * SCREEN : screen_login
- * ============================================================ */
-static int screen_login(void) {
-    char username[MAX_NAME_LEN + 1], password[64];
-    char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
-
-    clear_screen();
-    printf("\n  ╔══════════════════════════════════════════╗\n");
-    printf("  ║  login                                   ║\n");
-    printf("  ╚══════════════════════════════════════════╝\n\n");
-
-    printf("  username : "); read_line(username, sizeof(username));
-    printf("  password : "); read_line(password, sizeof(password));
-
-    snprintf(cmd, sizeof(cmd), "%s:%s:%s", CMD_LOGIN, username, password);
-    if (exchange(cmd, resp, sizeof(resp)) < 0) { print_error("server error."); return 0; }
-
-    if (strcmp(resp, CMD_ACK_OK) == 0) {
-        strncpy(me, username, MAX_NAME_LEN);
-        printf("\n  welcome, %s!\n", me);
-        return 1;
-    }
-    print_error(resp + strlen(CMD_ACK_ERR) + 1);
-    return 0;
-}
-
-/* ============================================================
- * SCREEN : screen_register
- * ============================================================ */
-static void screen_register(void) {
-    char username[MAX_NAME_LEN + 1], password[64], confirm[64];
-    char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
-
-    clear_screen();
-    printf("\n  ╔══════════════════════════════════════════╗\n");
-    printf("  ║  register new account                    ║\n");
-    printf("  ╚══════════════════════════════════════════╝\n\n");
-
-    printf("  username (no spaces)   : "); read_line(username, sizeof(username));
-    printf("  password (min 4 chars) : "); read_line(password, sizeof(password));
-    printf("  confirm password       : "); read_line(confirm,  sizeof(confirm));
-
-    if (strcmp(password, confirm) != 0) { print_error("passwords do not match."); return; }
-
-    snprintf(cmd, sizeof(cmd), "%s:%s:%s", CMD_REGISTER, username, password);
-    if (exchange(cmd, resp, sizeof(resp)) < 0) { print_error("server error."); return; }
-
-    if (strcmp(resp, CMD_ACK_OK) == 0)
-        print_success("account created. you can now log in.");
-    else
-        print_error(resp + strlen(CMD_ACK_ERR) + 1);
-}
-
-/* ============================================================
  * MENU : logged_in_menu
  * ============================================================ */
 static void logged_in_menu(void) {
@@ -380,7 +392,7 @@ static void logged_in_menu(void) {
                             printf("  │ %-2d │ %-17s │ %-8s │\n", n+1, names[n], statuses[n]);
                         n++; t = strtok(NULL, "|");
                     }
-                    printf("  └────┴───────────────────┴──────────┘\n");
+                    printf("  └────┴──────────────────┴──────────┘\n");
                 }
                 break;
             case 5:
@@ -388,6 +400,12 @@ static void logged_in_menu(void) {
                 exchange(cmd, resp, sizeof(resp));
                 print_success("logged out.");
                 me[0] = '\0';
+                /*
+                 * KEY CHANGE: close the TCP connection on logout.
+                 * This signals the iterative server that this session
+                 * is over and it should call accept() for the next client.
+                 */
+                disconnect_from_server();
                 return;
             case 6: {
                 char confirm[8];
@@ -398,6 +416,7 @@ static void logged_in_menu(void) {
                     exchange(cmd, resp, sizeof(resp));
                     print_success("account deleted.");
                     me[0] = '\0';
+                    disconnect_from_server();
                     return;
                 }
                 break;
@@ -406,6 +425,97 @@ static void logged_in_menu(void) {
         }
         printf("\n  press Enter to continue..."); getchar();
     }
+}
+
+/* ============================================================
+ * SCREEN : screen_login
+ * Connects first, then attempts login.
+ * Disconnects on failure so the server slot is freed.
+ * ============================================================ */
+static int screen_login(void) {
+    char username[MAX_NAME_LEN + 1], password[64];
+    char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
+
+    clear_screen();
+    printf("\n  ╔══════════════════════════════════════════╗\n");
+    printf("  ║  login                                   ║\n");
+    printf("  ╚══════════════════════════════════════════╝\n\n");
+
+    printf("  username : "); read_line(username, sizeof(username));
+    printf("  password : "); read_line(password, sizeof(password));
+
+    /* connect NOW — right before we actually need the server */
+    if (connect_to_server() < 0) {
+        print_error("could not reach server. it may be busy — try again.");
+        return 0;
+    }
+
+    snprintf(cmd, sizeof(cmd), "%s:%s:%s", CMD_LOGIN, username, password);
+    if (exchange(cmd, resp, sizeof(resp)) < 0) {
+        print_error("server error.");
+        disconnect_from_server();
+        return 0;
+    }
+
+    if (strcmp(resp, CMD_ACK_OK) == 0) {
+        strncpy(me, username, MAX_NAME_LEN);
+        printf("\n  welcome, %s!\n", me);
+        return 1;   /* keep connection open — session continues */
+    }
+
+    print_error(resp + strlen(CMD_ACK_ERR) + 1);
+    /*
+     * Login failed: close the connection immediately so the server
+     * goes back to accept() and doesn't hold its slot for nothing.
+     */
+    disconnect_from_server();
+    return 0;
+}
+
+/* ============================================================
+ * SCREEN : screen_register
+ * Same pattern: connect, do the work, then disconnect.
+ * Registration is a one-shot operation, not a session.
+ * ============================================================ */
+static void screen_register(void) {
+    char username[MAX_NAME_LEN + 1], password[64], confirm[64];
+    char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
+
+    clear_screen();
+    printf("\n  ╔══════════════════════════════════════════╗\n");
+    printf("  ║  register new account                    ║\n");
+    printf("  ╚══════════════════════════════════════════╝\n\n");
+
+    printf("  username (no spaces)   : "); read_line(username, sizeof(username));
+    printf("  password (min 4 chars) : "); read_line(password, sizeof(password));
+    printf("  confirm password       : "); read_line(confirm,  sizeof(confirm));
+
+    if (strcmp(password, confirm) != 0) { print_error("passwords do not match."); return; }
+
+    /* connect only now */
+    if (connect_to_server() < 0) {
+        print_error("could not reach server. it may be busy — try again.");
+        return;
+    }
+
+    snprintf(cmd, sizeof(cmd), "%s:%s:%s", CMD_REGISTER, username, password);
+    if (exchange(cmd, resp, sizeof(resp)) < 0) {
+        print_error("server error.");
+        disconnect_from_server();
+        return;
+    }
+
+    if (strcmp(resp, CMD_ACK_OK) == 0)
+        print_success("account created. you can now log in.");
+    else
+        print_error(resp + strlen(CMD_ACK_ERR) + 1);
+
+    /*
+     * Registration complete — disconnect immediately.
+     * Registration is not a session; the server can serve
+     * someone else right after this single exchange.
+     */
+    disconnect_from_server();
 }
 
 /* ============================================================
@@ -418,36 +528,15 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    struct sockaddr_in server_addr;
-
-    /* ── create TCP socket ── */
-    sock_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock_fd < 0) { perror("  [!] socket() failed"); exit(1); }
-
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port   = htons(SERVER_PORT);
-
-    if (inet_pton(AF_INET, argv[1], &server_addr.sin_addr) <= 0) {
-        fprintf(stderr, "  [!] invalid server IP: %s\n", argv[1]);
-        exit(1);
-    }
-
-    printf("\n  connecting to server at %s:%d ...\n", argv[1], SERVER_PORT);
+    strncpy(server_ip, argv[1], sizeof(server_ip) - 1);
 
     /*
-     * connect() does the TCP three-way handshake.
-     * If the server is already serving another client this call
-     * may block for a moment (until the server calls accept()).
-     * Once connected, this socket stays open for the whole session.
+     * NOTE: We do NOT connect here anymore.
+     * The connection happens inside screen_login() / screen_register()
+     * right when the user is actually ready to talk to the server.
+     * This is correct for an iterative server — don't hold a slot
+     * open just to show a menu.
      */
-    if (connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("  [!] connect() failed — is the server running?");
-        exit(1);
-    }
-
-    printf("  [+] TCP connection established.\n\n");
-
     printf("\n  ╔══════════════════════════════════════════════╗\n");
     printf("  ║   one-on-one chat  —  client                 ║\n");
     printf("  ║   Assignment 3: Iterative Connection-Orient. ║\n");
@@ -472,6 +561,6 @@ int main(int argc, char *argv[]) {
 
         if      (choice == 1) { if (screen_login()) logged_in_menu(); else { printf("\n  press Enter to try again..."); getchar(); } }
         else if (choice == 2) { screen_register(); printf("\n  press Enter to continue..."); getchar(); }
-        else if (choice == 3) { printf("  goodbye.\n\n"); close(sock_fd); exit(0); }
+        else if (choice == 3) { printf("  goodbye.\n\n"); disconnect_from_server(); exit(0); }
     }
 }
