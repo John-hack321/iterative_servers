@@ -1,6 +1,6 @@
 /*
  * SCS3304 — One-on-One Chat Application
- * Assignment 3 — Iterative Connectionless (UDP)
+ * Assignment 3 — Iterative Connectionless 
  * Message Handler Implementation
  */
 

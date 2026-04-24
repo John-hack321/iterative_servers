@@ -1,26 +1,4 @@
-/*
- * SCS3304 — One-on-One Chat Application
- * Assignment 3 — Iterative Connection-Oriented (TCP)
- * Client  (FIXED: connect per session, not at startup)
- *
- * THE FIX EXPLAINED:
- *   The original client opened ONE TCP connection at startup and
- *   kept it open for the entire program lifetime. This breaks the
- *   iterative server because:
- *     - Client 2 connects → OS queues it (handshake succeeds)
- *     - Client 2 sends LOGIN → goes into TCP send buffer
- *     - Server is busy with Client 1 → never calls recv() for Client 2
- *     - Client 2's recv_msg() blocks forever → "server error"
- *     - When Client 1 logs out, server tries to accept() Client 2's
- *       stale connection → socket is in bad state → server crashes
- *
- *   The fix: connect() only when a user actually starts a session
- *   (login or register), and close() when the session ends.
- *   This way Client 2 doesn't even attempt to connect until the
- *   server is free — it just sits at the main menu waiting.
- *
- *   This is the CORRECT pattern for an iterative server.
- */
+
 
 #include <stdio.h>
 #include <string.h>
@@ -49,15 +27,16 @@ static void read_line(char *buf, int size) {
     else buf[0] = 0;
 }
 
-/* ============================================================
- * FUNCTION : connect_to_server
- * PURPOSE  : Open a fresh TCP connection to the server.
- *            Called at the start of each login/register attempt.
- *            The iterative server only serves one client at a
- *            time — we don't connect until we're actually ready
- *            to start a session, so we don't block the server
- *            with an idle queued connection.
- * ============================================================ */
+/* 
+ * connect_to_server
+ * Open a fresh TCP connection to the server.
+ * Called at the start of each login/register attempt.
+ * The iterative server only serves one client at a
+ * time — we don't connect until we're actually ready
+ * to start a session, so we don't block the server
+ * with an idle queued connection.
+ */
+
 static int connect_to_server(void) {
     struct sockaddr_in server_addr;
 
@@ -87,18 +66,6 @@ static int connect_to_server(void) {
     printf("\n  connecting to server at %s:%d ...\n", server_ip, SERVER_PORT);
 
     if (connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        /*
-         * connect() will fail (or block a long time) if the server is
-         * currently serving another client AND the backlog is full.
-         * In practice with BACKLOG=5 it will usually succeed (TCP
-         * handshake completes into the backlog) but then recv_msg()
-         * would block. By connecting only here — right before we send
-         * a real command — the window of "connected but ignored" is
-         * as small as possible.
-         *
-         * A cleaner solution for production would be a retry loop here,
-         * but for the assignment this is sufficient.
-         */
         perror("  [!] connect() failed — server may be busy, try again");
         close(sock_fd);
         sock_fd = -1;
@@ -109,12 +76,12 @@ static int connect_to_server(void) {
     return 0;
 }
 
-/* ============================================================
- * FUNCTION : disconnect_from_server
- * PURPOSE  : Cleanly close the TCP connection after a session.
- *            This is what signals the iterative server to call
- *            accept() again for the next waiting client.
- * ============================================================ */
+/* 
+ *  disconnect_from_server
+ *  Cleanly close the TCP connection after a session.
+ *  This is what signals the iterative server to call
+ *  accept() again for the next waiting client.
+ */
 static void disconnect_from_server(void) {
     if (sock_fd >= 0) {
         close(sock_fd);
@@ -129,9 +96,9 @@ static int exchange(const char *cmd, char *resp, int resp_size) {
     return 0;
 }
 
-/* ============================================================
- * FUNCTION : print_recent_messages
- * ============================================================ */
+/* 
+ *  print_recent_messages
+ */
 static void print_recent_messages(const char *partner) {
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
     snprintf(cmd, sizeof(cmd), "%s:%s:%s", CMD_RECENT, me, partner);
@@ -165,9 +132,9 @@ static void print_recent_messages(const char *partner) {
     printf("  └──────────────────────────────────────────────────────┘\n\n");
 }
 
-/* ============================================================
+/* 
  * FUNCTION : chat_loop
- * ============================================================ */
+ */
 static void chat_loop(const char *partner) {
     char input[MAX_BODY_LEN];
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
@@ -210,9 +177,9 @@ static void chat_loop(const char *partner) {
     printf("\n");
 }
 
-/* ============================================================
+/* 
  * SCREEN : screen_inbox
- * ============================================================ */
+ */
 static void screen_inbox(void) {
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
 
@@ -267,9 +234,9 @@ static void screen_inbox(void) {
     chat_loop(senders[pick - 1]);
 }
 
-/* ============================================================
+/* 
  * SCREEN : screen_start_chat
- * ============================================================ */
+ */
 static void screen_start_chat(void) {
     char resp[BUFFER_SIZE];
 
@@ -317,9 +284,9 @@ static void screen_start_chat(void) {
     chat_loop(names[pick - 1]);
 }
 
-/* ============================================================
- * SCREEN : screen_search
- * ============================================================ */
+/* 
+ *  screen_search
+ */
 static void screen_search(void) {
     char target[MAX_NAME_LEN + 1], cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
 
@@ -344,9 +311,9 @@ static void screen_search(void) {
     }
 }
 
-/* ============================================================
+/* 
  * MENU : logged_in_menu
- * ============================================================ */
+ */
 static void logged_in_menu(void) {
     int choice;
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
@@ -400,11 +367,7 @@ static void logged_in_menu(void) {
                 exchange(cmd, resp, sizeof(resp));
                 print_success("logged out.");
                 me[0] = '\0';
-                /*
-                 * KEY CHANGE: close the TCP connection on logout.
-                 * This signals the iterative server that this session
-                 * is over and it should call accept() for the next client.
-                 */
+        
                 disconnect_from_server();
                 return;
             case 6: {
@@ -427,11 +390,11 @@ static void logged_in_menu(void) {
     }
 }
 
-/* ============================================================
+/* 
  * SCREEN : screen_login
  * Connects first, then attempts login.
  * Disconnects on failure so the server slot is freed.
- * ============================================================ */
+ */
 static int screen_login(void) {
     char username[MAX_NAME_LEN + 1], password[64];
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
@@ -472,11 +435,11 @@ static int screen_login(void) {
     return 0;
 }
 
-/* ============================================================
+/* 
  * SCREEN : screen_register
  * Same pattern: connect, do the work, then disconnect.
  * Registration is a one-shot operation, not a session.
- * ============================================================ */
+ */
 static void screen_register(void) {
     char username[MAX_NAME_LEN + 1], password[64], confirm[64];
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
@@ -518,9 +481,9 @@ static void screen_register(void) {
     disconnect_from_server();
 }
 
-/* ============================================================
+/* 
  * MAIN
- * ============================================================ */
+ */
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         fprintf(stderr, "  usage: %s <server_ip>\n", argv[0]);
@@ -530,13 +493,7 @@ int main(int argc, char *argv[]) {
 
     strncpy(server_ip, argv[1], sizeof(server_ip) - 1);
 
-    /*
-     * NOTE: We do NOT connect here anymore.
-     * The connection happens inside screen_login() / screen_register()
-     * right when the user is actually ready to talk to the server.
-     * This is correct for an iterative server — don't hold a slot
-     * open just to show a menu.
-     */
+
     printf("\n  ╔══════════════════════════════════════════════╗\n");
     printf("  ║   one-on-one chat  —  client                 ║\n");
     printf("  ║   Assignment 3: Iterative Connection-Orient. ║\n");

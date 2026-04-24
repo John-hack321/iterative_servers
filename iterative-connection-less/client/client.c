@@ -1,34 +1,3 @@
-/*
- * SCS3304 — One-on-One Chat Application
- * Assignment 3 — Iterative Connectionless (UDP)
- * Client
- *
- * USAGE:
- *   ./client <server_ip>
- *   e.g.  ./client 192.168.1.105
- *
- * HOW THE CLIENT WORKS IN THIS MODEL:
- *   There is no connect() call. Each time the client needs
- *   something from the server it builds a command string,
- *   fires it as a single UDP datagram with sendto(), then
- *   calls recvfrom() and waits for the response datagram.
- *
- *   The client IS stateful (it tracks who is logged in locally
- *   in the `me` variable) but the SERVER is stateless — it does
- *   not remember the client between datagrams. Every request
- *   carries all the information the server needs (e.g. the
- *   username is always sent with MSG, LOGOUT, etc.).
- *
- *   CHAT MODEL (send-and-read-reply):
- *   In the iterative connectionless model there is no live
- *   push from the server. Instead the chat loop works as:
- *     1. You type a message
- *     2. Client sends MSG datagram, waits for ACK
- *     3. Client sends RECENT datagram to check for new messages
- *     4. Any new messages since last check are displayed
- *   This is a polling / request-response style chat.
- */
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -74,9 +43,9 @@ static int send_recv(const char *msg, char *resp, int resp_size) {
     return 0;
 }
 
-/* ============================================================
+/* 
  * SCREEN : screen_register
- * ============================================================ */
+ */
 static void screen_register(void) {
     char username[MAX_NAME_LEN + 1], password[64], confirm[64];
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
@@ -101,9 +70,9 @@ static void screen_register(void) {
         print_error(resp + strlen(CMD_ACK_ERR) + 1);
 }
 
-/* ============================================================
+/*
  * SCREEN : screen_login
- * ============================================================ */
+ */
 static int screen_login(void) {
     char username[MAX_NAME_LEN + 1], password[64];
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
@@ -128,10 +97,10 @@ static int screen_login(void) {
     return 0;
 }
 
-/* ============================================================
- * FUNCTION : print_recent_messages
- * PURPOSE  : Request and display last N messages with partner.
- * ============================================================ */
+/* 
+ * print_recent_messages
+ * Request and display last N messages with partner.
+ */
 static void print_recent_messages(const char *partner) {
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
     snprintf(cmd, sizeof(cmd), "%s:%s:%s", CMD_RECENT, me, partner);
@@ -165,17 +134,7 @@ static void print_recent_messages(const char *partner) {
     printf("  └──────────────────────────────────────────────────────┘\n\n");
 }
 
-/* ============================================================
- * FUNCTION : chat_loop
- * PURPOSE  : Send-and-read-reply style chat.
- *
- * NOTE ON THIS MODEL:
- *   Because the server is iterative and connectionless there is
- *   no live push. After you send a message you poll for recent
- *   messages so you can see what the other person wrote.
- *   Type /refresh to check for new messages from the other side.
- *   Type /quit to leave the chat.
- * ============================================================ */
+// main chat loop 
 static void chat_loop(const char *partner) {
     char input[MAX_BODY_LEN];
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
@@ -220,9 +179,9 @@ static void chat_loop(const char *partner) {
     printf("\n");
 }
 
-/* ============================================================
+/* 
  * SCREEN : screen_inbox
- * ============================================================ */
+*/
 static void screen_inbox(void) {
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
 
@@ -278,9 +237,9 @@ static void screen_inbox(void) {
     chat_loop(senders[pick - 1]);
 }
 
-/* ============================================================
+/* 
  * SCREEN : screen_start_chat
- * ============================================================ */
+ */
 static void screen_start_chat(void) {
     char resp[BUFFER_SIZE];
 
@@ -328,9 +287,9 @@ static void screen_start_chat(void) {
     chat_loop(names[pick - 1]);
 }
 
-/* ============================================================
+/* 
  * SCREEN : screen_search
- * ============================================================ */
+ */
 static void screen_search(void) {
     char target[MAX_NAME_LEN + 1], cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
 
@@ -355,9 +314,9 @@ static void screen_search(void) {
     }
 }
 
-/* ============================================================
+/* 
  * MENU : logged_in_menu
- * ============================================================ */
+ */
 static void logged_in_menu(void) {
     int choice;
     char cmd[BUFFER_SIZE], resp[BUFFER_SIZE];
@@ -431,9 +390,9 @@ static void logged_in_menu(void) {
     }
 }
 
-/* ============================================================
+/* 
  * MAIN
- * ============================================================ */
+  */
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         fprintf(stderr, "  usage: %s <server_ip>\n", argv[0]);

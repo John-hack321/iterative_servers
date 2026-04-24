@@ -2,12 +2,6 @@
  * SCS3304 — One-on-One Chat Application
  * Assignment 3 — Iterative Connectionless (UDP)
  * User Manager Implementation
- *
- * FILE LOCKING NOTE:
- *   Even though the server is iterative (one request at a time),
- *   we keep flock() on all file operations. This is good practice
- *   and ensures the data files are safe if the server is ever
- *   upgraded to a concurrent model later.
  */
 
 #include <stdio.h>

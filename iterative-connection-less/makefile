@@ -6,7 +6,7 @@ COMMON = common/auth.c \
          common/user_manager.c \
          common/message_handler.c
 
-# Default target - builds both (for local testing)
+# Default target - builds both ( for testing and debuggin purposes )
 all: server_exec client_exec
 
 # Server-only target - for compiling on server machine
@@ -28,13 +28,3 @@ clean-server:
 
 clean-client:
 	rm -f client_exec
-
-# Help target to show usage
-help:
-	@echo "Available targets:"
-	@echo "  make server     - Compile server only"
-	@echo "  make client     - Compile client only"
-	@echo "  make all        - Compile both server and client"
-	@echo "  make clean      - Remove all executables"
-	@echo "  make clean-server - Remove server executable only"
-	@echo "  make clean-client - Remove client executable only"

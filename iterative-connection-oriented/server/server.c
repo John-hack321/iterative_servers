@@ -3,7 +3,6 @@
  * Assignment 3 — Iterative Connection-Oriented (TCP)
  * Server
  *
- * ════════════════════════════════════════════════════════════════
  * WHAT "ITERATIVE CONNECTION-ORIENTED" MEANS IN THIS FILE:
  *
  *   CONNECTION-ORIENTED:
@@ -38,7 +37,6 @@
  *   MULTI-MACHINE:
  *     Binds to 0.0.0.0 so it accepts connections from any machine.
  *     Client passes the server IP as a command-line argument.
- * ════════════════════════════════════════════════════════════════
  */
 
 #include <stdio.h>
@@ -54,12 +52,12 @@
 #include "../common/user_manager.h"
 #include "../common/message_handler.h"
 
-/* ============================================================
- * FUNCTION : handle_command
- * PURPOSE  : Parse one command from the client and respond.
+/* 
+ * handle_command
+ * Parse one command from the client and respond.
  *            Called inside client_session() for every message
  *            received over the TCP connection.
- * ============================================================ */
+ */
 static void handle_command(int client_fd, char *cmd, char *session_user) {
     char response[BUFFER_SIZE];
     char command[16] = {0};
@@ -69,7 +67,7 @@ static void handle_command(int client_fd, char *cmd, char *session_user) {
 
     sscanf(cmd, "%15[^:]", command);
 
-    /* ── REGISTER ── */
+    /* REGISTER */
     if (strcmp(command, CMD_REGISTER) == 0) {
         sscanf(cmd, "%*[^:]:%49[^:]:%49[^\n]", a1, a2);
         int r = register_user(a1, a2);
@@ -80,7 +78,7 @@ static void handle_command(int client_fd, char *cmd, char *session_user) {
         send_msg(client_fd, response);
     }
 
-    /* ── LOGIN ── */
+    /* LOGIN */
     else if (strcmp(command, CMD_LOGIN) == 0) {
         sscanf(cmd, "%*[^:]:%49[^:]:%49[^\n]", a1, a2);
         int r = login_user(a1, a2);
@@ -94,7 +92,7 @@ static void handle_command(int client_fd, char *cmd, char *session_user) {
         else                            { snprintf(response, sizeof(response), "%s:login failed",       CMD_ACK_ERR); send_msg(client_fd, response); }
     }
 
-    /* ── LOGOUT ── */
+    /* LOGOUT  */
     else if (strcmp(command, CMD_LOGOUT) == 0) {
         sscanf(cmd, "%*[^:]:%49[^\n]", a1);
         logout_user(a1);
@@ -103,7 +101,7 @@ static void handle_command(int client_fd, char *cmd, char *session_user) {
         send_msg(client_fd, CMD_ACK_OK);
     }
 
-    /* ── DEREGISTER ── */
+    /* DEREGISTER */
     else if (strcmp(command, CMD_DEREGISTER) == 0) {
         sscanf(cmd, "%*[^:]:%49[^\n]", a1);
         logout_user(a1);
@@ -112,20 +110,20 @@ static void handle_command(int client_fd, char *cmd, char *session_user) {
         send_msg(client_fd, r == SUCCESS ? CMD_ACK_OK : CMD_ACK_ERR);
     }
 
-    /* ── LIST ── */
+    /* LIST */
     else if (strcmp(command, CMD_LIST) == 0) {
         build_user_list(response, sizeof(response));
         send_msg(client_fd, response);
     }
 
-    /* ── SEARCH ── */
+    /* SEARCH */
     else if (strcmp(command, CMD_SEARCH) == 0) {
         sscanf(cmd, "%*[^:]:%49[^\n]", a1);
         build_search_result(a1, response, sizeof(response));
         send_msg(client_fd, response);
     }
 
-    /* ── SEND MESSAGE ── */
+    /* SEND MESSAGE */
     else if (strcmp(command, CMD_MSG) == 0) {
         sscanf(cmd, "%*[^:]:%49[^:]:%49[^:]:%1023[^\n]", a1, a2, body);
         int r = store_message(a1, a2, body);
@@ -133,34 +131,34 @@ static void handle_command(int client_fd, char *cmd, char *session_user) {
         else { snprintf(response, sizeof(response), "%s:recipient not found", CMD_ACK_ERR); send_msg(client_fd, response); }
     }
 
-    /* ── INBOX SENDERS ── */
+    /* INBOX SENDERS */
     else if (strcmp(command, CMD_SENDERS) == 0) {
         sscanf(cmd, "%*[^:]:%49[^\n]", a1);
         build_inbox_senders(a1, response, sizeof(response));
         send_msg(client_fd, response);
     }
 
-    /* ── RECENT ── */
+    /* RECENT */
     else if (strcmp(command, CMD_RECENT) == 0) {
         sscanf(cmd, "%*[^:]:%49[^:]:%49[^\n]", a1, a2);
         build_recent_str(a1, a2, 8, response, sizeof(response));
         send_msg(client_fd, response);
     }
 
-    /* ── unknown ── */
+    /* unknown */
     else {
         snprintf(response, sizeof(response), "%s:unknown command", CMD_ACK_ERR);
         send_msg(client_fd, response);
     }
 }
 
-/* ============================================================
- * FUNCTION : client_session
- * PURPOSE  : Handle one client through their full session.
- *            The server stays in this function until the client
- *            disconnects — this is what makes it ITERATIVE.
- *            No other client can be accept()ed until this returns.
- * ============================================================ */
+/* 
+ * client_session
+ * Handle one client through their full session.
+ * The server stays in this function until the client
+ * disconnects — this is what makes it ITERATIVE.
+ * No other client can be accept()ed until this returns.
+ */
 static void client_session(int client_fd, const char *client_ip) {
     char buf[BUFFER_SIZE];
     char session_user[MAX_NAME_LEN + 1] = "";
@@ -191,20 +189,14 @@ static void client_session(int client_fd, const char *client_ip) {
 
     close(client_fd);
 
-    /*
-     * ── THIS IS THE KEY ITERATIVE MOMENT ──
-     * We only reach this line after the client has fully
-     * disconnected. The server now returns to main() and
-     * calls accept() again. Only now can the next queued
-     * client be served.
-     */
+    // this is the actula iteraitove moment where the connection acualy coses
     printf("  [TCP-ITERATIVE] client done. back to accept().\n");
     printf("  [TCP-ITERATIVE] ─────────────────────────────────────\n\n");
 }
 
-/* ============================================================
+/* 
  * MAIN — the iterative accept loop
- * ============================================================ */
+*/
 int main(void) {
     int server_fd;
     struct sockaddr_in server_addr, client_addr;
@@ -217,13 +209,13 @@ int main(void) {
     printf("  ║   Transport: TCP                             ║\n");
     printf("  ╚══════════════════════════════════════════════╝\n\n");
 
-    /* ── create TCP socket ── */
+    /* create TCP socket */
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) { perror("  [!] socket() failed"); exit(1); }
 
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    /* ── bind to all interfaces ── */
+    /* bind to all interfaces */
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family      = AF_INET;
     server_addr.sin_port        = htons(SERVER_PORT);
@@ -249,7 +241,7 @@ int main(void) {
     printf("  [*] waiting for connections — Ctrl+C to stop\n\n");
 
     /*
-     * ════════════════════════════════════════════════
+     * 
      * THE ITERATIVE ACCEPT LOOP
      *
      * accept() blocks until a client connects.
@@ -257,7 +249,7 @@ int main(void) {
      * client FULLY before returning here.
      * Only then do we call accept() again.
      * No fork, no threads, pure sequential processing.
-     * ════════════════════════════════════════════════
+     * 
      */
     while (1) {
         printf("  [TCP-ITERATIVE] waiting in accept()...\n");

@@ -1,9 +1,9 @@
 /*
  * SCS3304 — One-on-One Chat Application
- * Assignment 3 — Iterative Connectionless (UDP)
+ * Assignment 3 — Iterative Connectionless
  * Authentication Module
  *
- * djb2 hash — no external libraries required.
+ * djb2 hash : for hashing of passwrods being stored in system.
  */
 
 #include <stdio.h>

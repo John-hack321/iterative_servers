@@ -1,10 +1,8 @@
 /*
  * SCS3304 — One-on-One Chat Application
- * Assignment 3 — Iterative Connectionless (UDP)
+ * Assignment 3 — Iterative Connectionless
  * Server
  *
- * ════════════════════════════════════════════════════════════════
- * WHAT "ITERATIVE CONNECTIONLESS" MEANS IN THIS FILE:
  *
  *   ITERATIVE:
  *     The server has exactly ONE socket and ONE loop.
@@ -38,7 +36,6 @@
  *       [UDP-ITERATIVE] request handled. waiting for next datagram...
  *     This makes it visually clear that the server handles one
  *     request at a time before looping back to wait.
- * ════════════════════════════════════════════════════════════════
  */
 
 #include <stdio.h>
@@ -53,11 +50,11 @@
 #include "../common/user_manager.h"
 #include "../common/message_handler.h"
 
-/* ============================================================
+/* 
  * FUNCTION : handle_datagram
  * PURPOSE  : Parse one UDP datagram and build the response.
  *            Called once per recvfrom() — fully synchronous.
- * ============================================================ */
+ */
 static void handle_datagram(const char *cmd, char *response, int resp_size) {
     char command[16] = {0};
     char a1[50]      = {0};
@@ -66,7 +63,7 @@ static void handle_datagram(const char *cmd, char *response, int resp_size) {
 
     sscanf(cmd, "%15[^:]", command);
 
-    /* ── REGISTER ── REG:username:password ── */
+    /* REGISTER ── REG:username:password ── */
     if (strcmp(command, CMD_REGISTER) == 0) {
         sscanf(cmd, "%*[^:]:%49[^:]:%49[^\n]", a1, a2);
         int r = register_user(a1, a2);
@@ -76,7 +73,7 @@ static void handle_datagram(const char *cmd, char *response, int resp_size) {
         else                         snprintf(response, resp_size, "%s:server error", CMD_ACK_ERR);
     }
 
-    /* ── LOGIN ── LOGIN:username:password ── */
+    /* LOGIN:username:password */
     else if (strcmp(command, CMD_LOGIN) == 0) {
         sscanf(cmd, "%*[^:]:%49[^:]:%49[^\n]", a1, a2);
         int r = login_user(a1, a2);
@@ -87,14 +84,14 @@ static void handle_datagram(const char *cmd, char *response, int resp_size) {
         else                         snprintf(response, resp_size, "%s:login failed",       CMD_ACK_ERR);
     }
 
-    /* ── LOGOUT ── LOGOUT:username ── */
+    /*  LOGOUT LOGOUT:username */
     else if (strcmp(command, CMD_LOGOUT) == 0) {
         sscanf(cmd, "%*[^:]:%49[^\n]", a1);
         logout_user(a1);
         snprintf(response, resp_size, CMD_ACK_OK);
     }
 
-    /* ── DEREGISTER ── DEREG:username ── */
+    /*  DEREGISTER DEREG:username */
     else if (strcmp(command, CMD_DEREGISTER) == 0) {
         sscanf(cmd, "%*[^:]:%49[^\n]", a1);
         logout_user(a1);
@@ -102,18 +99,18 @@ static void handle_datagram(const char *cmd, char *response, int resp_size) {
         snprintf(response, resp_size, r == SUCCESS ? CMD_ACK_OK : CMD_ACK_ERR);
     }
 
-    /* ── LIST ── */
+    /* LIST */
     else if (strcmp(command, CMD_LIST) == 0) {
         build_user_list(response, resp_size);
     }
 
-    /* ── SEARCH ── SEARCH:username ── */
+    /* SEARCH  SEARCH:username */
     else if (strcmp(command, CMD_SEARCH) == 0) {
         sscanf(cmd, "%*[^:]:%49[^\n]", a1);
         build_search_result(a1, response, resp_size);
     }
 
-    /* ── SEND MESSAGE ── MSG:from:to:body ── */
+    /*  SEND MESSAGE MSG:from:to:body */
     else if (strcmp(command, CMD_MSG) == 0) {
         sscanf(cmd, "%*[^:]:%49[^:]:%49[^:]:%1023[^\n]", a1, a2, body);
         int r = store_message(a1, a2, body);
@@ -121,27 +118,26 @@ static void handle_datagram(const char *cmd, char *response, int resp_size) {
         else              snprintf(response, resp_size, "%s:recipient not found", CMD_ACK_ERR);
     }
 
-    /* ── INBOX SENDERS ── SENDERS:username ── */
+    /* INBOX SENDERS  SENDERS:username */
     else if (strcmp(command, CMD_SENDERS) == 0) {
         sscanf(cmd, "%*[^:]:%49[^\n]", a1);
         build_inbox_senders(a1, response, resp_size);
     }
 
-    /* ── RECENT ── RECENT:user_a:user_b ── */
+    /* RECENT:user_a:user_b */
     else if (strcmp(command, CMD_RECENT) == 0) {
         sscanf(cmd, "%*[^:]:%49[^:]:%49[^\n]", a1, a2);
         build_recent_str(a1, a2, 8, response, resp_size);
     }
 
-    /* ── unknown ── */
     else {
         snprintf(response, resp_size, "%s:unknown command", CMD_ACK_ERR);
     }
 }
 
-/* ============================================================
+/* 
  * MAIN
- * ============================================================ */
+ */
 int main(void) {
     int sock_fd;
     struct sockaddr_in server_addr, client_addr;
@@ -175,7 +171,7 @@ int main(void) {
     printf("  [*] waiting for datagrams — Ctrl+C to stop\n\n");
 
     /*
-     * ════════════════════════════════════════════════
+     * 
      * THE ITERATIVE LOOP
      *
      * recvfrom() blocks until a datagram arrives.
@@ -183,7 +179,7 @@ int main(void) {
      * files and building the response — before calling
      * recvfrom() again. This is what makes it iterative:
      * one request at a time, no concurrency at all.
-     * ════════════════════════════════════════════════
+     * 
      */
     while (1) {
         memset(buf,      0, sizeof(buf));

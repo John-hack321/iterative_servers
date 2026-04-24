@@ -2,13 +2,6 @@
  * SCS3304 — One-on-One Chat Application
  * Assignment 3 — Iterative Connection-Oriented (TCP)
  * Network Framing Utilities
- *
- * Every message is sent as:
- *   [4-byte length (network byte order)][message body]
- *
- * htonl / ntohl convert between host and network byte order so
- * the two machines (which may have different CPU architectures)
- * always agree on the integer value.
  */
 
 #include <string.h>

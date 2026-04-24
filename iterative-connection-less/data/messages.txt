@@ -1,4 +1,0 @@
-2026-04-21 11:45:09|kinoti|john|hello john
-2026-04-21 11:45:38|john|kinoti|hello kinot how are you
-2026-04-21 11:46:01|kinoti|john|i am very fine john and you ?
-2026-04-21 11:46:28|john|kinoti|I am too. Nice to know that okay

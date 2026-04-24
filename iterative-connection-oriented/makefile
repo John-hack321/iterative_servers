@@ -29,15 +29,3 @@ clean-server:
 
 clean-client:
 	rm -f client_exec
-
-# Help target to show usage
-help:
-	@echo "Available targets:"
-	@echo "  make server     - Compile server only"
-	@echo "  make client     - Compile client only"
-	@echo "  make all        - Compile both server and client"
-	@echo "  make clean      - Remove all executables"
-	@echo "  make clean-server - Remove server executable only"
-	@echo "  make clean-client - Remove client executable only"
-	@echo ""
-	@echo "Iterative Connection-Oriented (TCP) Version"
